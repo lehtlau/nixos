@@ -1,0 +1,113 @@
+name: Sync main to GitHub
+
+on:
+  # Cron has no "last X weekday of month" syntax, so this runs every Friday
+  # and the check-date job decides whether to actually do anything.
+  schedule:
+    - cron: "0 3 * * 5" # every Friday at 03:00
+  workflow_dispatch: {}
+
+jobs:
+  check-date:
+    runs-on: debian-latest
+    outputs:
+      is-last-friday: ${{ steps.check.outputs.is-last-friday }}
+    steps:
+      - id: check
+        run: |
+          day=$(date +%d)
+          last_day=$(date -d "$(date +%Y-%m-01) +1 month -1 day" +%d)
+          if [ $((day + 7)) -le "$last_day" ]; then
+            echo "is-last-friday=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "is-last-friday=true" >> "$GITHUB_OUTPUT"
+          fi
+
+  sync:
+    needs: check-date
+    if: needs.check-date.outputs.is-last-friday == 'true' || github.event_name == 'workflow_dispatch'
+    runs-on: debian-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Squash main into github branch
+        run: |
+          git config user.name "forgejo-bot"
+          git config user.email "forgejo-bot@remote"
+          # build on top of GitHub's current main so the push is always a fast-forward
+          if git fetch https://github.com/lehtlau/nixos.git main:github; then
+            git checkout github
+            # take main's tree as-is; a merge would conflict with the scrubbed files
+            git read-tree -u --reset origin/main
+          else
+            git checkout --orphan github origin/main
+          fi
+          bash scripts/clean-user-info.sh --name user --email user@net.com --no-keys
+          git add -A
+          if git diff --cached --quiet; then
+            echo "No changes to sync"
+          else
+            git commit -m "Sync from main ($(date +%Y-%m-%d))"
+          fi
+
+      - name: Push to GitHub
+        env:
+          SSH_KEY: ${{ secrets.GH_DEPLOY_KEY }}
+        run: |
+          set -euo pipefail
+
+          echo "::group::Deploy key"
+          if [ -z "${SSH_KEY:-}" ]; then
+            echo "::error::GH_DEPLOY_KEY secret is empty or not available to this workflow"
+            exit 1
+          fi
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          # prints only the public fingerprint, compare it with the deploy key on GitHub
+          if ! ssh-keygen -l -f ~/.ssh/id_ed25519; then
+            echo "::error::GH_DEPLOY_KEY is not a valid private key (check for missing newlines / header lines)"
+            exit 1
+          fi
+          echo "::endgroup::"
+
+          echo "::group::known_hosts"
+          if ! ssh-keyscan -H github.com >> ~/.ssh/known_hosts; then
+            echo "::error::ssh-keyscan github.com failed; runner may lack outbound network/DNS or port 22 is blocked"
+            exit 1
+          fi
+          echo "::endgroup::"
+
+          echo "::group::SSH auth test"
+          # github always exits 1 here, even on success, so judge by the output
+          auth_out=$(ssh -T -o BatchMode=yes -i ~/.ssh/id_ed25519 git@github.com 2>&1 || true)
+          echo "$auth_out"
+          if ! grep -q "successfully authenticated" <<<"$auth_out"; then
+            echo "::error::SSH authentication to GitHub failed"
+            ssh -vT -o BatchMode=yes -i ~/.ssh/id_ed25519 git@github.com 2>&1 || true
+            exit 1
+          fi
+          echo "::endgroup::"
+
+          echo "::group::Refs"
+          git log --oneline -n 3 github
+          git remote add github git@github.com:lehtlau/nixos.git
+          git ls-remote github refs/heads/main || echo "::warning::could not list remote main"
+          echo "::endgroup::"
+
+          if ! git push github github:main 2>&1 | tee push.log; then
+            echo "::error::git push failed"
+            if grep -qE "non-fast-forward|fetch first|rejected" push.log; then
+              echo "::error::Remote main has commits not in the local github branch (history diverged)."
+            elif grep -qiE "write access|permission|denied" push.log; then
+              echo "::error::Deploy key lacks write access; enable 'Allow write access' on the GitHub deploy key."
+            elif grep -qiE "protected branch|GH006" push.log; then
+              echo "::error::GitHub branch protection rejected the push."
+            fi
+            echo "Retrying with verbose output:"
+            GIT_TRACE=1 GIT_SSH_COMMAND="ssh -v" git push github github:main || true
+            exit 1
+          fi

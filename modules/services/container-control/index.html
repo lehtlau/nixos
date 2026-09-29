@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="dark light" />
+    <title>Server controls</title>
+    <style>
+      :root {
+        --bg: #14161a;
+        --card: #1e2128;
+        --line: #2e323c;
+        --text: #e8eaed;
+        --muted: #9aa0ac;
+        --on: #3fb950;
+        --off: #6e7681;
+        --busy: #d29922;
+        --fail: #f85149;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        padding: 32px 16px;
+        background: var(--bg);
+        color: var(--text);
+        font: 16px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
+      }
+      main { max-width: 480px; margin: 0 auto; }
+      h1 { font-size: 20px; margin: 0 0 20px; font-weight: 600; }
+      .card {
+        background: var(--card);
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        padding: 16px;
+        margin-bottom: 12px;
+      }
+      .row { display: flex; align-items: center; gap: 10px; }
+      .name { font-weight: 600; }
+      .dot {
+        width: 10px; height: 10px; border-radius: 50%;
+        background: var(--off); flex: none;
+      }
+      .running .dot { background: var(--on); box-shadow: 0 0 0 4px rgba(63, 185, 80, 0.15); }
+      .busy .dot { background: var(--busy); animation: pulse 1.2s infinite; }
+      .failed .dot { background: var(--fail); }
+      @keyframes pulse { 50% { opacity: 0.35; } }
+      .state { margin-left: auto; color: var(--muted); font-size: 14px; }
+      .meta { color: var(--muted); font-size: 13px; margin-top: 4px; }
+      .actions { display: flex; gap: 8px; margin-top: 14px; }
+      button {
+        flex: 1;
+        padding: 10px 12px;
+        border-radius: 8px;
+        border: 1px solid var(--line);
+        background: #262a33;
+        color: var(--text);
+        font: inherit;
+        font-size: 15px;
+        cursor: pointer;
+      }
+      button:hover:not(:disabled) { border-color: #4a505e; }
+      button:disabled { opacity: 0.4; cursor: default; }
+      button.start { background: #1d3b26; border-color: #2c5a37; }
+      button.stop { background: #3b1f1d; border-color: #5c2f2b; }
+      .error { color: var(--fail); font-size: 13px; margin-top: 10px; }
+      footer { color: var(--muted); font-size: 12px; text-align: center; margin-top: 20px; }
+      @media (prefers-color-scheme: light) {
+        :root { --bg: #f5f6f8; --card: #fff; --line: #dcdfe4; --text: #1b1f24; --muted: #656d76; }
+        button { background: #f0f1f4; }
+        button.start { background: #e6f5ea; border-color: #b9e0c4; }
+        button.stop { background: #fdeceb; border-color: #f3c2bf; }
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>Server controls</h1>
+      <div id="units"></div>
+      <footer id="footer">loading…</footer>
+    </main>
+    <script>
+      var container = document.getElementById("units");
+      var footer = document.getElementById("footer");
+      var pending = {};
+
+      function cls(unit) {
+        if (unit.busy) return "busy";
+        if (unit.state === "failed") return "failed";
+        if (unit.running) return "running";
+        return "stopped";
+      }
+
+      function render(units) {
+        container.innerHTML = "";
+        units.forEach(function (unit) {
+          var busy = unit.busy || pending[unit.unit];
+          var card = document.createElement("div");
+          card.className = "card " + cls(unit);
+
+          var row = document.createElement("div");
+          row.className = "row";
+          var dot = document.createElement("span");
+          dot.className = "dot";
+          var name = document.createElement("span");
+          name.className = "name";
+          name.textContent = unit.name;
+          var state = document.createElement("span");
+          state.className = "state";
+          state.textContent = pending[unit.unit] ? pending[unit.unit] + "…" : unit.status;
+          row.append(dot, name, state);
+
+          var meta = document.createElement("div");
+          meta.className = "meta";
+          meta.textContent = unit.unit + (unit.running ? " · up " + unit.uptime : "");
+
+          var actions = document.createElement("div");
+          actions.className = "actions";
+          [
+            ["start", "Start", !unit.running],
+            ["stop", "Stop", unit.running],
+            ["restart", "Restart", unit.running],
+          ].forEach(function (spec) {
+            var button = document.createElement("button");
+            button.className = spec[0];
+            button.textContent = spec[1];
+            button.disabled = busy || !spec[2];
+            button.onclick = function () {
+              send(unit.unit, spec[0]);
+            };
+            actions.append(button);
+          });
+
+          card.append(row, meta, actions);
+          if (unit.error) {
+            var error = document.createElement("div");
+            error.className = "error";
+            error.textContent = unit.error;
+            card.append(error);
+          }
+          container.append(card);
+        });
+      }
+
+      var lastUnits = [];
+
+      function refresh() {
+        return fetch("api/units", { cache: "no-store" })
+          .then(function (response) {
+            return response.json();
+          })
+          .then(function (units) {
+            lastUnits = units;
+            render(units);
+            footer.textContent = "updated " + new Date().toLocaleTimeString();
+          })
+          .catch(function () {
+            footer.textContent = "cannot reach the control service";
+          });
+      }
+
+      function send(unit, verb) {
+        pending[unit] = verb.charAt(0).toUpperCase() + verb.slice(1) + "ing";
+        render(lastUnits);
+        fetch("api/units/" + encodeURIComponent(unit) + "/" + verb, { method: "POST" })
+          .then(function (response) {
+            return response.json().then(function (body) {
+              if (!response.ok) throw new Error(body.error || "request failed");
+            });
+          })
+          .catch(function (error) {
+            lastUnits = lastUnits.map(function (item) {
+              return item.unit === unit ? Object.assign({}, item, { error: error.message }) : item;
+            });
+          })
+          .finally(function () {
+            // Let systemd settle before trusting the next poll.
+            setTimeout(function () {
+              delete pending[unit];
+              refresh();
+            }, 1500);
+          });
+      }
+
+      refresh();
+      setInterval(refresh, 5000);
+    </script>
+  </body>
+</html>
