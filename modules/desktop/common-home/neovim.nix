@@ -1,4 +1,3 @@
-# home/neovim.nix
 #
 # kickstart.nvim, rebuilt on top of nixpkgs instead of lazy.nvim + Mason.
 # Plugins come from pkgs-unstable.vimPlugins, language servers and CLI tools
@@ -86,6 +85,9 @@
       # kickstart optional: file explorer (neo-tree needs nui + plenary)
       nui-nvim
       neo-tree-nvim
+
+      # Toggleable terminal windows (split / vertical / floating)
+      toggleterm-nvim
     ];
 
     # initLua vs extraConfig: Lua goes here, Vimscript in extraConfig
@@ -620,6 +622,50 @@
       }
       vim.keymap.set("n", "\\", ":Neotree reveal<CR>", {desc = "NeoTree reveal", silent = true})
       vim.keymap.set("n", "<leader>e", ":Neotree toggle<CR>", {desc = "Toggle file [E]xplorer", silent = true})
+
+      -- [[ toggleterm ]]
+
+      require("toggleterm").setup {
+        -- <C-\> toggles the last-used terminal from normal, insert and terminal mode
+        open_mapping = [[<c-\>]],
+        -- Horizontal splits want a line count, vertical splits a share of the columns
+        size = function(term)
+          if term.direction == "vertical" then
+            return vim.o.columns * 0.4
+          end
+          return 15
+        end,
+        direction = "horizontal",
+        shade_terminals = true,
+        start_in_insert = true,
+        persist_size = true,
+        -- Always reopen in insert mode rather than remembering normal mode
+        persist_mode = false,
+        float_opts = {border = "rounded"},
+      }
+
+      -- Terminal buffers don't need the gutter, and the window chords should work
+      -- without pressing <Esc><Esc> to leave terminal mode first.
+      vim.api.nvim_create_autocmd("TermOpen", {
+        group = vim.api.nvim_create_augroup("kickstart-toggleterm", {clear = true}),
+        pattern = "term://*toggleterm#*",
+        callback = function(event)
+          vim.opt_local.number = false
+          vim.opt_local.relativenumber = false
+          vim.opt_local.signcolumn = "no"
+
+          local opts = {buffer = event.buf}
+          vim.keymap.set("t", "<C-h>", "<C-\\><C-n><C-w>h", opts)
+          vim.keymap.set("t", "<C-j>", "<C-\\><C-n><C-w>j", opts)
+          vim.keymap.set("t", "<C-k>", "<C-\\><C-n><C-w>k", opts)
+          vim.keymap.set("t", "<C-l>", "<C-\\><C-n><C-w>l", opts)
+        end,
+      })
+
+      -- <leader>th is already the LSP inlay-hint toggle, so the float is [F]loat.
+      vim.keymap.set("n", "<leader>tt", "<cmd>ToggleTerm direction=horizontal<CR>", {desc = "[T]oggle [T]erminal (split)"})
+      vim.keymap.set("n", "<leader>tf", "<cmd>ToggleTerm direction=float<CR>", {desc = "[T]oggle terminal ([F]loat)"})
+      vim.keymap.set("n", "<leader>tv", "<cmd>ToggleTerm direction=vertical<CR>", {desc = "[T]oggle terminal ([V]ertical)"})
 
       -- [[ Git diff menu (ä) ]]
 

@@ -1,4 +1,3 @@
-# home/scripts.nix
 {
   pkgs,
   osConfig,
@@ -6,16 +5,13 @@
 }: let
   myUser = osConfig.my.user;
 
-  # writeShellScriptBin creates a derivation with an executable in bin/
   screenshotScript = pkgs.writeShellScriptBin "screenshot" ''
     #!/usr/bin/env bash
     set -euo pipefail
 
-    # Directory where screenshots will be saved
     SCREENSHOT_DIR="$HOME/Pictures/Screenshots"
     mkdir -p "$SCREENSHOT_DIR"
 
-    # Filename with timestamp
     FILENAME="$SCREENSHOT_DIR/$(date +'%Y-%m-%d_%H-%M-%S').png"
 
     case "$1" in
@@ -25,7 +21,6 @@
         grim -g "$(slurp)" -t png - | tee "$FILENAME" | wl-copy
         ;;
       full)
-        # grim without -g captures entire screen
         grim -t png - | tee "$FILENAME" | wl-copy
         ;;
       *)
@@ -35,7 +30,6 @@
     esac
 
     # Send a notification with the screenshot as the icon.
-    # mako is already installed from your packages.nix
     notify-send "Screenshot Taken" "Saved as <i>$(basename "$FILENAME")</i> and copied to clipboard." -i "$FILENAME"
   '';
 
@@ -61,13 +55,6 @@
       fi
     done
 
-    # # Get GPU temperature
-    # GPU_TEMP=$(nvidia-smi --query-gpu=temperature.gpu --format=csv,noheader,nounits 2>/dev/null)
-    # if [ -z "$GPU_TEMP" ]; then
-    #   GPU_TEMP="N/A"
-    # fi
-
-    # Format output
     echo "🌡️ $CPU_TEMP°C"
   '';
 
@@ -134,12 +121,10 @@
     #!/usr/bin/env bash
     set -euo pipefail
 
-    # Source environment variables from ~/.env
     if [ -f "$HOME/.env" ]; then
       source "$HOME/.env"
     fi
 
-    # Check if IP and API key are set
     if [ -z "''${LAMETRIC_IP:-}" ]; then
       notify-send -u critical "LaMetric Error" "LAMETRIC_IP is not set in ~/.env"
       exit 1
@@ -149,7 +134,6 @@
       exit 1
     fi
 
-    # --- Script Logic ---
     MESSAGE="$1"
     # Default icon - see https://developer.lametric.com/icons for full list
     ICON="a2867" # Notification icon (same as your working example)
@@ -157,14 +141,7 @@
     # JSON payload for the LaMetric API with critical priority (required for dimmed mode)
     JSON_PAYLOAD=" { \"priority\":\"critical\", \"model\": { \"frames\": [ { \"icon\":\"$ICON\", \"text\":\"$MESSAGE\"} ] } }"
 
-    # Send the notification using curl with timeout and error handling
     echo "Sending notification to LaMetric at $LAMETRIC_IP..."
-    echo "JSON Payload: $JSON_PAYLOAD"
-    echo
-    echo "DEBUG: You can test manually with:"
-    echo "curl -X POST -u \"dev:$LAMETRIC_API_KEY\" -H \"Content-Type: application/json\" -d '$JSON_PAYLOAD' --connect-timeout 5 --max-time 10 --fail \"http://$LAMETRIC_IP:8080/api/v2/device/notifications\""
-    echo
-
     if curl -X POST \
          -u "dev:$LAMETRIC_API_KEY" \
          -H "Content-Type: application/json" \
@@ -186,19 +163,20 @@
   createEnvScript = pkgs.writeShellScriptBin "create-env" ''
         #!/usr/bin/env bash
 
+        umask 077
         ENV_FILE="$HOME/.env"
 
         echo "Creating environment variables file at $ENV_FILE"
         echo "Press Enter to skip any variable you don't want to set."
         echo
 
-        # Create or backup existing file
         if [ -f "$ENV_FILE" ]; then
           echo "Backing up existing $ENV_FILE to $ENV_FILE.backup"
           cp "$ENV_FILE" "$ENV_FILE.backup"
         fi
 
-        # Start with header
+        touch "$ENV_FILE"
+        chmod 600 "$ENV_FILE"
         cat > "$ENV_FILE" << 'EOF'
     # User environment variables
     # This file is sourced by bash and zsh on shell initialization
@@ -206,7 +184,6 @@
 
     EOF
 
-        # Prompt for each variable
         declare -A variables=(
           ["ANTHROPIC_API_KEY"]="Anthropic API key for Claude"
           ["LAMETRIC_API_KEY"]="LaMetric device API key"
@@ -219,7 +196,7 @@
           read -r value
 
           if [ -n "$value" ]; then
-            echo "export $var=\"$value\"" >> "$ENV_FILE"
+            printf 'export %s=%q\n' "$var" "$value" >> "$ENV_FILE"
             echo "✓ Set $var"
           else
             echo "⏭ Skipped $var"
@@ -236,12 +213,10 @@
     #!/usr/bin/env bash
     set -euo pipefail
 
-    # Source environment variables from ~/.env
     if [ -f "$HOME/.env" ]; then
       source "$HOME/.env"
     fi
 
-    # Check if IP and API key are set
     if [ -z "''${LAMETRIC_IP:-}" ]; then
       notify-send -u critical "LaMetric Error" "LAMETRIC_IP is not set in ~/.env"
       exit 1
@@ -290,10 +265,8 @@
       exit 1
     fi
 
-    # JSON payload for the action
     JSON_PAYLOAD="{\"id\":\"$ACTION\"}"
 
-    # Send the command
     if curl -X POST \
          -u "dev:$LAMETRIC_API_KEY" \
          -H "Content-Type: application/json" \
@@ -311,68 +284,11 @@
     fi
   '';
 
-  # Service status indicator script
-  serviceStatusScript = pkgs.writeShellScriptBin "waybar-services" ''
-    #!/usr/bin/env bash
-
-    # Services to monitor
-    declare -A services=(
-      # ["ollama"]="🤖"
-    )
-
-    active_services=""
-    inactive_count=0
-
-    for service in "''${!services[@]}"; do
-      if systemctl is-active --quiet "$service" 2>/dev/null; then
-        active_services+="''${services[$service]}"
-      else
-        ((inactive_count++))
-      fi
-    done
-
-    # Show active services and count of inactive ones
-    if [ $inactive_count -gt 0 ]; then
-      echo "$active_services ⚠️$inactive_count"
-    else
-      echo "$active_services"
-    fi
-  '';
-
-  # Music visualizer script
-  musicVisualizerScript = pkgs.writeShellScriptBin "waybar-music-viz" ''
-    #!/usr/bin/env bash
-
-    # Check if music is playing
-    if ! playerctl status 2>/dev/null | grep -q "Playing"; then
-      echo ""
-      exit 0
-    fi
-
-    # Simple ASCII visualizer bars
-    bars=("▁" "▂" "▃" "▄" "▅" "▆" "▇" "█")
-    viz=""
-
-    # Generate random visualization (in real setup, you'd use audio data)
-    for i in {1..8}; do
-      random_height=$((RANDOM % 8))
-      viz+="''${bars[$random_height]}"
-    done
-
-    # Get current song info
-    artist=$(playerctl metadata artist 2>/dev/null || echo "Unknown")
-    title=$(playerctl metadata title 2>/dev/null || echo "Unknown")
-
-    # Format: visualizer + song info
-    echo "♪ $viz $title"
-  '';
-
   # Weather widget script
   weatherScript = pkgs.writeShellScriptBin "waybar-weather" ''
     #!/usr/bin/env bash
     set -euo pipefail
 
-    # Source environment variables
     if [ -f "$HOME/.env" ]; then
       source "$HOME/.env"
     fi
@@ -383,7 +299,6 @@
     # Weather API endpoint (using wttr.in - no API key needed)
     WEATHER_URL="https://wttr.in/$LOCATION?format=%t|%C|%p"
 
-    # Fetch weather data with timeout
     if ! weather_data=$(curl -s --connect-timeout 5 --max-time 10 "$WEATHER_URL" 2>/dev/null); then
       echo "🌡️ N/A"
       exit 0
@@ -404,7 +319,6 @@
       *) icon="🌤️" ;;
     esac
 
-    # Format output
     if [ "$precip" != "0.0mm" ] && [ -n "$precip" ]; then
       echo "$icon $temp | Rain: $precip"
     else
@@ -419,31 +333,26 @@
 
     WALLPAPER_DIR="/home/${myUser.name}/Pictures/Wallpapers"
 
-    # Check if wallpaper directory exists
     if [ ! -d "$WALLPAPER_DIR" ]; then
       echo "Error: Wallpaper directory $WALLPAPER_DIR not found"
       exit 1
     fi
 
-    # Get all image files (png, jpg, jpeg) from wallpaper directory
     WALLPAPERS=()
     while IFS= read -r -d $'\0' file; do
       WALLPAPERS+=("$file")
     done < <(find "$WALLPAPER_DIR" -type f \( -iname "*.png" -o -iname "*.jpg" -o -iname "*.jpeg" \) -print0)
 
-    # Check if any wallpapers found
     if [ ''${#WALLPAPERS[@]} -eq 0 ]; then
       echo "Error: No wallpaper files found in $WALLPAPER_DIR"
       exit 1
     fi
 
-    # Select random wallpaper
     RANDOM_INDEX=$(($RANDOM % ''${#WALLPAPERS[@]}))
     SELECTED_WALLPAPER="''${WALLPAPERS[$RANDOM_INDEX]}"
 
     echo "Setting wallpaper to: $(basename "$SELECTED_WALLPAPER")"
 
-    # Set wallpaper using awww
     if command -v awww >/dev/null 2>&1; then
       awww img "$SELECTED_WALLPAPER" --resize fit --transition-type grow --transition-pos center --transition-duration 2
     else
@@ -488,7 +397,6 @@
   waybarVpnScript = pkgs.writeShellScriptBin "waybar-vpn" ''
     #!/usr/bin/env bash
 
-    # Check if VPN is connected
     if nmcli connection show --active | grep -q "be-bru.prod.surfshark.comsurfshark_openvpn_udp"; then
       echo "🛡️ BE"
     else
@@ -503,7 +411,6 @@
 
     TEMPLATE_DIR="/home/${myUser.name}/nixos-config/dev-templates"
 
-    # Show usage if no arguments
     if [ $# -eq 0 ]; then
       echo "🚀 Development Environment Initializer"
       echo
@@ -531,7 +438,6 @@
     TEMPLATE="$1"
     TEMPLATE_PATH="$TEMPLATE_DIR/$TEMPLATE"
 
-    # Check if template exists
     if [ ! -d "$TEMPLATE_PATH" ]; then
       echo "❌ Template '$TEMPLATE' not found"
       echo "Available templates:"
@@ -544,7 +450,6 @@
       exit 1
     fi
 
-    # Check if flake.nix already exists
     if [ -f "flake.nix" ]; then
       echo "⚠️  flake.nix already exists in current directory"
       echo -n "Overwrite? (y/N): "
@@ -555,22 +460,18 @@
       fi
     fi
 
-    # Copy template files
     echo "📋 Copying template '$TEMPLATE'..."
     cp "$TEMPLATE_PATH/flake.nix" .
 
-    # Create .envrc for direnv
     echo "📝 Creating .envrc..."
     echo "use flake" > .envrc
 
-    # Allow direnv to load the environment
     echo "🔄 Allowing direnv..."
     direnv allow
 
     echo "✅ Development environment initialized!"
     echo "💡 Run 'nix develop' or just 'cd .' to enter the environment"
 
-    # Show what was created
     echo
     echo "Created files:"
     echo "  📄 flake.nix (development environment)"
@@ -579,7 +480,6 @@
     echo "The environment will automatically load when you enter this directory."
   '';
 in {
-  # Add the script package to your user's profile
   home.packages = [
     screenshotScript
     findTempSensors
@@ -588,8 +488,6 @@ in {
     createEnvScript
     lametricMusicScript
     wallpaperRotateScript
-    serviceStatusScript
-    musicVisualizerScript
     weatherScript
     waybarVpnScript
     vpnScript

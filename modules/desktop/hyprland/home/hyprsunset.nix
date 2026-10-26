@@ -1,11 +1,8 @@
 {pkgs-unstable, ...}: {
-  # Install the hyprlock package
   home.packages = with pkgs-unstable; [
     hyprsunset
   ];
 
-  # Link the configuration file to the correct path
-  # Hyprlock looks for its config in ~/.config/hypr/hyprlock.conf
   home.file.".config/hypr/hyprsunset.conf".text = ''
         max-gamma = 150
 

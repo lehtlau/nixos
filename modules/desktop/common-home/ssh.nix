@@ -1,17 +1,33 @@
-{osConfig, ...}: let
+{
+  osConfig,
+  myOptions,
+  lib,
+  pkgs,
+  ...
+}: let
   hostName = osConfig.networking.hostName;
-in {
-  home.file.".ssh/config".text = ''
+  sshConfig = pkgs.writeText "ssh-config" ''
     Host forgejo
-        HostName 192.168.50.197
+        HostName ${myOptions.server.lanIp}
         User forgejo
         Port 2222
         IdentitiesOnly yes
         IdentityFile ~/.ssh/${hostName}
 
-
     Host home
-        HostName 192.168.50.197
+        HostName ${myOptions.server.lanIp}
+        User ${osConfig.my.user.name}
+        IdentitiesOnly yes
+        IdentityFile ~/.ssh/${hostName}
+
+    Host jupiter
+        HostName 192.168.50.4
+        User ${osConfig.my.user.name}
+        IdentitiesOnly yes
+        IdentityFile ~/.ssh/${hostName}
+
+    Host laptop
+        HostName 192.168.50.2
         User ${osConfig.my.user.name}
         IdentitiesOnly yes
         IdentityFile ~/.ssh/${hostName}
@@ -19,5 +35,16 @@ in {
     Host *
         IdentityFile ~/.ssh/${hostName}
 
+  '';
+in {
+  home.activation.installSshConfig = lib.hm.dag.entryAfter ["linkGeneration"] ''
+    run install -d -m 700 "$HOME/.ssh"
+    if [[ -v DRY_RUN ]]; then
+      run install -m 600 ${sshConfig} "$HOME/.ssh/config"
+    else
+      sshConfigTmp=$(mktemp "$HOME/.ssh/config.XXXXXX")
+      install -m 600 ${sshConfig} "$sshConfigTmp"
+      mv -fT "$sshConfigTmp" "$HOME/.ssh/config"
+    fi
   '';
 }

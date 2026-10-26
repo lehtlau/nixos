@@ -16,7 +16,7 @@
     in {
       devShells.default = pkgs.mkShell {
         buildInputs = with pkgs; [
-          nodejs_22 # Latest LTS Node.js
+          nodejs_22
           nodePackages.npm
           nodePackages.yarn
           nodePackages.pnpm

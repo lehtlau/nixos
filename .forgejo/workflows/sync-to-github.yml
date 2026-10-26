@@ -4,7 +4,8 @@ on:
   # Cron has no "last X weekday of month" syntax, so this runs every Friday
   # and the check-date job decides whether to actually do anything.
   schedule:
-    - cron: "0 3 * * 5" # every Friday at 03:00
+    - cron: "0 3 * * 5" # every Friday at 03:00 UTC
+  # Manual runs intentionally bypass the last-Friday restriction.
   workflow_dispatch: {}
 
 jobs:
@@ -14,13 +15,17 @@ jobs:
       is-last-friday: ${{ steps.check.outputs.is-last-friday }}
     steps:
       - id: check
+        shell: bash
         run: |
-          day=$(date +%d)
-          last_day=$(date -d "$(date +%Y-%m-01) +1 month -1 day" +%d)
-          if [ $((day + 7)) -le "$last_day" ]; then
-            echo "is-last-friday=false" >> "$GITHUB_OUTPUT"
-          else
+          set -euo pipefail
+          today=$(date -u +%F)
+          weekday=$(date -u -d "$today" +%u)
+          next_week_month=$(date -u -d "$today +7 days" +%Y-%m)
+          if [ "$weekday" = 5 ] && [ "$next_week_month" != "${today%-*}" ]; then
             echo "is-last-friday=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "is-last-friday=false" >> "$GITHUB_OUTPUT"
+            echo "Date check: $today is not the last Friday of the month (UTC)."
           fi
 
   sync:
@@ -34,6 +39,8 @@ jobs:
 
       - name: Squash main into github branch
         run: |
+          set -euo pipefail
+
           git config user.name "forgejo-bot"
           git config user.email "forgejo-bot@remote"
           # build on top of GitHub's current main so the push is always a fast-forward
@@ -44,7 +51,7 @@ jobs:
           else
             git checkout --orphan github origin/main
           fi
-          bash scripts/clean-user-info.sh --name user --email user@net.com --no-keys
+          bash scripts/clean-user-info.sh
           git add -A
           if git diff --cached --quiet; then
             echo "No changes to sync"
@@ -52,11 +59,32 @@ jobs:
             git commit -m "Sync from main ($(date +%Y-%m-%d))"
           fi
 
+      # Scan the exact mirror tree after scrubbing and before exposing the key.
+      # Full history contains an exposed credential; scan current files.
+      - name: Scan public mirror for secrets
+        uses: docker://ghcr.io/gitleaks/gitleaks:v8.30.1@sha256:b109bc5f8f76a38196a3e413704fc5b9e3c32360bce4e4b603bd6f45b3721dbb
+        with:
+          args: dir --redact --no-banner --config .gitleaks.toml .
+
       - name: Push to GitHub
+        shell: bash
         env:
           SSH_KEY: ${{ secrets.GH_DEPLOY_KEY }}
+          SYNC_EVENT_NAME: ${{ github.event_name }}
         run: |
           set -euo pipefail
+
+          # Scheduled jobs may have been queued, retried, or crossed midnight.
+          # Recheck their date; manual runs are allowed on any day.
+          if [ "$SYNC_EVENT_NAME" != "workflow_dispatch" ]; then
+            today=$(date -u +%F)
+            weekday=$(date -u -d "$today" +%u)
+            next_week_month=$(date -u -d "$today +7 days" +%Y-%m)
+            if [ "$weekday" != 5 ] || [ "$next_week_month" = "${today%-*}" ]; then
+              echo "Skipping push: $today is not the last Friday of the month (UTC)."
+              exit 0
+            fi
+          fi
 
           echo "::group::Deploy key"
           if [ -z "${SSH_KEY:-}" ]; then

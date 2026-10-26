@@ -10,52 +10,6 @@
   # generate here, so this keeps embedded quotes and backslashes correct.
   luaStr = builtins.toJSON;
 
-  # `hyprctl keyword` only works with the legacy (hyprlang) parser, so anything
-  # that pokes at config at runtime goes through `hyprctl eval` instead.
-  lidToggle = pkgs.writeShellApplication {
-    name = "lid-toggle";
-    runtimeInputs = [
-      pkgs.jq
-      pkgs.hyprland
-    ];
-    text = ''
-      #!/usr/bin/env bash
-      set -euo pipefail
-
-      MONITOR="eDP-1"
-      ACTION="''${1:-}"
-
-      if [[ -z "$ACTION" ]]; then
-        echo "Usage: $0 close|open" >&2
-        exit 1
-      fi
-
-      monitors_json="$(hyprctl monitors -j)"
-
-      # hyprctl only lists *active* monitors, so presence == enabled
-      edp_active=$(jq --arg m "$MONITOR" '[.[] | select(.name == $m)] | length > 0' <<< "$monitors_json")
-      other_count=$(jq --arg m "$MONITOR" '[.[] | select(.name != $m)] | length' <<< "$monitors_json")
-
-      case "$ACTION" in
-        close)
-          # only disable the laptop panel if something else is driving the show
-          if (( other_count > 0 )); then
-            hyprctl eval "hl.monitor({ output = '$MONITOR', disabled = true })"
-          fi
-          ;;
-        open)
-          if [[ "$edp_active" == "false" ]]; then
-            hyprctl eval "hl.monitor({ output = '$MONITOR', mode = 'preferred', position = 'auto', scale = 1 })"
-          fi
-          ;;
-        *)
-          echo "Unknown action: $ACTION" >&2
-          exit 1
-          ;;
-      esac
-    '';
-  };
-
   # ---------------------------------------------------------------------------
   # Keybindings
   #
@@ -114,12 +68,12 @@
   lidBinds = withOpts {locked = true;} [
     {
       key = "switch:on:Lid Switch";
-      dispatch = exec "lid-toggle close";
+      dispatch = exec "hypr-monitors -l close";
       desc = "lid closed: turn the built-in panel off";
     }
     {
       key = "switch:off:Lid Switch";
-      dispatch = exec "lid-toggle open";
+      dispatch = exec "hypr-monitors -l open";
       desc = "lid opened: turn the built-in panel on";
     }
     {
@@ -191,10 +145,12 @@
 
   # -- Laptop multimedia keys for volume and LCD brightness -- (was bindel)
   mediaBinds =
-    withOpts {
+    withOpts
+    {
       locked = true;
       repeating = true;
-    } [
+    }
+    [
       {
         key = "XF86AudioRaiseVolume";
         dispatch = exec "wpctl set-volume -l 1 @DEFAULT_AUDIO_SINK@ 5%+";
@@ -241,24 +197,45 @@
     ];
 
   # -- Workspace Navigation --
-  workspaceBinds = lib.concatMap (n: let
-    key = toString (lib.mod n 10);
-    ws = toString n;
-  in [
-    {
-      mod = "mainMod";
-      inherit key;
-      dispatch = "hl.dsp.focus({ workspace = ${ws} })";
-      desc = "workspace ${ws}";
-    }
-    {
-      mod = "mainMod";
-      extra = ["SHIFT"];
-      inherit key;
-      dispatch = "hl.dsp.window.move({ workspace = ${ws} })";
-      desc = "move window to workspace ${ws}";
-    }
-  ]) (lib.range 1 10);
+  workspaceBinds =
+    lib.concatMap (
+      n: let
+        key = toString (lib.mod n 10);
+        ws = toString n;
+      in [
+        {
+          mod = "mainMod";
+          inherit key;
+          dispatch = "hl.dsp.focus({ workspace = ${ws} })";
+          desc = "workspace ${ws}";
+        }
+        {
+          mod = "mainMod";
+          extra = ["SHIFT"];
+          inherit key;
+          dispatch = "hl.dsp.window.move({ workspace = ${ws} })";
+          desc = "move window to workspace ${ws}";
+        }
+      ]
+    ) (lib.range 1 10)
+    # scroll wheel instead of a specific number: "e+1"/"e-1" step to the
+    # next/previous workspace that actually exists, skipping untouched empty
+    # ones rather than walking every number in between - same convention
+    # Hyprland's own sample config uses for mainMod + scroll.
+    ++ [
+      {
+        mod = "mainMod";
+        key = "mouse_down";
+        dispatch = ''hl.dsp.focus({ workspace = "e+1" })'';
+        desc = "next workspace";
+      }
+      {
+        mod = "mainMod";
+        key = "mouse_up";
+        dispatch = ''hl.dsp.focus({ workspace = "e-1" })'';
+        desc = "previous workspace";
+      }
+    ];
 
   # was bind; these are the ones hypr-keybinds lists
   appBinds =
@@ -426,10 +403,16 @@
         desc = "toggle floating";
       }
       {
-        mod = "mainMod";
+        mod = "altMod";
         key = "P";
         dispatch = "hl.dsp.window.pseudo()";
         desc = "pseudotile (dwindle)";
+      }
+      {
+        mod = "mainMod";
+        key = "P";
+        dispatch = exec "hypr-monitors";
+        desc = "monitor configuration widget";
       }
 
       # scaling
@@ -543,6 +526,8 @@
     "awww-daemon"
     "waybar"
     "hyprsunset"
+    # "nm-applet --indicator" # Show NetworkManager in Waybar's StatusNotifier tray
+    "hypr-monitors -p ${monitorProfile}" # Restore the saved monitor layout, if any
     "awww init" # Initialize awww daemon
     "wallpaper-rotate" # Set random wallpaper at startup
     "wl-paste --type text --watch cliphist store" # Start clipboard history daemon
@@ -555,13 +540,26 @@
     function()
     ${lib.concatMapStrings (cmd: "  hl.exec_cmd(${luaStr cmd})\n") execOnce}end'';
 
+  # The profile re-applied whenever the set of monitors changes. Monitors it
+  # doesn't mention, or that aren't plugged in right now, are left alone, so
+  # the same profile is safe docked and undocked.
+  monitorProfile = "profile1.json";
+
+  # Let the dock settle, then pass every event to hypr-monitors. It serializes
+  # applies and filters events caused by its own layout changes internally;
+  # an outer flock -n would discard real hotplug events during an apply.
+  reapplyCmd = "sleep 1; hypr-monitors -p ${monitorProfile}";
+
+  reapplyHook = ''
+    function()
+      hl.exec_cmd(${luaStr reapplyCmd})
+    end'';
+
   # Format one bind for the wofi cheatsheet
   pangoEscape = lib.replaceStrings ["&" "<" ">"] ["&amp;" "&lt;" "&gt;"];
   format-keybind = bind: let
     keys = lib.concatStringsSep " + " (
-      lib.optional (bind.mod or null != null) modNames.${bind.mod}
-      ++ (bind.extra or [])
-      ++ [bind.key]
+      lib.optional (bind.mod or null != null) modNames.${bind.mod} ++ (bind.extra or []) ++ [bind.key]
     );
   in "<b>${pangoEscape keys}</b>: ${pangoEscape bind.desc}";
 
@@ -580,9 +578,15 @@ in {
     configType = "lua";
     settings = {
       # `$mainMod = SUPER` in hyprlang, a lua local here
-      mainMod = {_var = "SUPER";};
-      altMod = {_var = "SUPER + ALT";};
-      ctrlMod = {_var = "SUPER + CTRL";};
+      mainMod = {
+        _var = "SUPER";
+      };
+      altMod = {
+        _var = "SUPER + ALT";
+      };
+      ctrlMod = {
+        _var = "SUPER + CTRL";
+      };
 
       monitor = {
         output = "";
@@ -593,9 +597,24 @@ in {
 
       # Environment variables to ensure applications detect dark mode
       env = [
-        {_args = ["GTK_THEME" "Adwaita:dark"];}
-        {_args = ["COLOR_SCHEME" "prefer-dark"];}
-        {_args = ["GTK_APPLICATION_PREFER_DARK_THEME" "1"];}
+        {
+          _args = [
+            "GTK_THEME"
+            "Adwaita:dark"
+          ];
+        }
+        {
+          _args = [
+            "COLOR_SCHEME"
+            "prefer-dark"
+          ];
+        }
+        {
+          _args = [
+            "GTK_APPLICATION_PREFER_DARK_THEME"
+            "1"
+          ];
+        }
         # {_args = ["QT_QPA_PLATFORMTHEME" "qt5ct"];} # qt6 apps pick up qt6ct automatically
         # {_args = ["QT_QPA_PLATFORM" "wayland"];}
       ];
@@ -641,8 +660,14 @@ in {
           {
             type = "bezier";
             points = [
-              [0.05 0.9]
-              [0.1 1.05]
+              [
+                0.05
+                0.9
+              ]
+              [
+                0.1
+                1.05
+              ]
             ];
           }
         ];
@@ -689,12 +714,31 @@ in {
         }
       ];
 
-      on = {
-        _args = [
-          "hyprland.start"
-          (mkLuaInline startupHook)
-        ];
-      };
+      # One hl.on() call per entry. monitor.added/removed are Lua config
+      # events (see hl.meta.lua's HL.EventName list) - hotplug needs no
+      # socket listener. monitor.layout_changed is deliberately not among
+      # them: applying a layout is itself a layout change, which would feed
+      # straight back into this.
+      on = [
+        {
+          _args = [
+            "hyprland.start"
+            (mkLuaInline startupHook)
+          ];
+        }
+        {
+          _args = [
+            "monitor.added"
+            (mkLuaInline reapplyHook)
+          ];
+        }
+        {
+          _args = [
+            "monitor.removed"
+            (mkLuaInline reapplyHook)
+          ];
+        }
+      ];
 
       bind = map mkBind allBinds;
     };
@@ -704,6 +748,5 @@ in {
   home.packages = [
     keybinds-script
     pkgs.awww # wallpaper utility
-    lidToggle
   ];
 }

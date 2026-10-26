@@ -1,0 +1,67 @@
+--- a/include/group.hpp
++++ b/include/group.hpp
+@@ -26,6 +26,7 @@
+   bool is_first_widget = true;
+   bool is_drawer = false;
+   bool click_to_reveal = false;
++  bool pinned = false;
+   std::string add_class_to_drawer_children;
+   bool handleMouseEnter(GdkEventCrossing* const& ev) override;
+   bool handleMouseLeave(GdkEventCrossing* const& ev) override;
+--- a/src/group.cpp
++++ b/src/group.cpp
+@@ -102,13 +102,26 @@
+ }
+ 
+ bool Group::handleMouseLeave(GdkEventCrossing* const& e) {
+-  if (!click_to_reveal && e->detail != GDK_NOTIFY_INFERIOR) {
++  if (!click_to_reveal && !pinned && e->detail != GDK_NOTIFY_INFERIOR) {
+     hide_group();
+   }
+   return false;
+ }
+ 
+ bool Group::handleToggle(GdkEventButton* const& e) {
++  // Right click pins a hover drawer open, and unpins it, so its contents can
++  // be read without keeping the pointer on the group.
++  if (is_drawer && !click_to_reveal && e->button == 3) {
++    pinned = !pinned;
++    if (pinned) {
++      show_group();
++      box.get_style_context()->add_class("pinned");
++    } else {
++      box.get_style_context()->remove_class("pinned");
++      hide_group();
++    }
++    return true;
++  }
+   if (!click_to_reveal || e->button != 1) {
+     return false;
+   }
+--- a/src/modules/power_profiles_daemon.cpp
++++ b/src/modules/power_profiles_daemon.cpp
+@@ -176,16 +176,14 @@
+ 
+ bool PowerProfilesDaemon::handleToggle(GdkEventButton* const& e) {
+   if (e->type == GdkEventType::GDK_BUTTON_PRESS && connected_) {
+-    if (e->button == 1) /* left click */ {
+-      activeProfile_++;
+-      if (activeProfile_ == availableProfiles_.end()) {
+-        activeProfile_ = availableProfiles_.begin();
+-      }
+-    } else {
+-      if (activeProfile_ == availableProfiles_.begin()) {
+-        activeProfile_ = availableProfiles_.end();
+-      }
+-      activeProfile_--;
++    // Only the left button switches profiles. Everything else is left for an
++    // enclosing group, which uses right click to pin its drawer open.
++    if (e->button != 1) {
++      return false;
++    }
++    activeProfile_++;
++    if (activeProfile_ == availableProfiles_.end()) {
++      activeProfile_ = availableProfiles_.begin();
+     }
+ 
+     using VarStr = Glib::Variant<Glib::ustring>;

@@ -1,9 +1,11 @@
 # === NixOS Configuration Specific ===
 # User environment variables (may contain sensitive information)
 .env
+.env.*
+*.env
 
 # Build artifacts and temporary files
-result/
+result
 result-*
 .direnv/
 shell.nix.backup

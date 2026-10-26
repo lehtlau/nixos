@@ -1,9 +1,13 @@
-{config, ...}: {
+{
+  config,
+  myOptions,
+  ...
+}: {
   services.openssh = {
-    enable = true;
+    enable = config.my.enableSsh;
     openFirewall = true;
     settings = {
-      PasswordAuthentication = false;
+      PasswordAuthentication = myOptions.sshPasswordLogin or false;
       KbdInteractiveAuthentication = false;
       PermitRootLogin = "no";
       AllowUsers = [config.my.user.name];

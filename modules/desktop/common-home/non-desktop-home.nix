@@ -1,11 +1,9 @@
 {...}: {
   imports = [
-    # Applications and tools
-    ./neovim.nix # Terminal editor
+    ./neovim.nix
 
-    # Shell and development environment
-    ./shell.nix # Zsh configuration
-    ./git.nix # Git settings
+    ./shell.nix
+    ./git.nix
     ./ssh.nix
   ];
 }

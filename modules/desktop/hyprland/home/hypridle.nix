@@ -8,10 +8,11 @@
   hyprctl = "${config.wayland.windowManager.hyprland.finalPackage}/bin/hyprctl";
   hyprlock = "${pkgs.hyprlock}/bin/hyprlock";
   loginctl = "${pkgs.systemd}/bin/loginctl";
+  systemctl = "${pkgs.systemd}/bin/systemctl";
   pidof = "${pkgs.procps}/bin/pidof";
 in {
-  # hypridle is used here purely as the sleep/lock hook -- there are
-  # deliberately no `listener` entries, so this adds no idle timeouts.
+  # Suspend after 30 minutes idle, locking through the sleep hook below.
+  # Waybar's idle inhibitor pauses the timer while "Awake" is on.
   #
   # Why hypridle rather than a systemd unit ordered before sleep.target: the
   # user systemd manager on this system has no sleep.target at all
@@ -29,12 +30,21 @@ in {
   # keybind, wlogout, another agent) takes the exact same path.
   services.hypridle = {
     enable = true;
-    settings.general = {
-      before_sleep_cmd = "${loginctl} lock-session";
-      # the panel comes back off after resume unless it is explicitly poked
-      after_sleep_cmd = "${hyprctl} dispatch dpms on";
-      # guard against stacking instances when several triggers overlap
-      lock_cmd = "${pidof} hyprlock || ${hyprlock}";
+    settings = {
+      general = {
+        before_sleep_cmd = "${loginctl} lock-session";
+        # the panel comes back off after resume unless it is explicitly poked
+        after_sleep_cmd = "${hyprctl} dispatch dpms on";
+        # guard against stacking instances when several triggers overlap
+        lock_cmd = "${pidof} hyprlock || ${hyprlock}";
+        ignore_wayland_inhibit = false;
+      };
+      listener = [
+        {
+          timeout = 1800;
+          on-timeout = "${systemctl} suspend";
+        }
+      ];
     };
   };
 }

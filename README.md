@@ -1,30 +1,58 @@
-# Install nixos
-Boot the NixOS minimal install ISO, then:
+# Install NixOS
+Boot the NixOS minimal installation ISO, then run:
 
-`sudo -i`
+`sudo su`
 
 `loadkeys fi`
 
 ## Connect to the internet
-`nixos-install` downloads the whole system. For wifi:
+
+`nixos-install` downloads the whole system. To connect to Wi-Fi:
 ```bash
 nmtui
 # or
 nmcli device wifi connect "<SSID>" password "<PASSWORD>"
 ```
 
-## run install script
+## Install over SSH (optional)
+
+On the machine booted from the NixOS ISO, after connecting it to the network,
+set a temporary password for the live `nixos` user and start SSH:
+
+```bash
+passwd nixos
+systemctl start sshd
+hostname -I
+```
+
+From another machine on the same network, connect using the IP shown above.
+For example:
+
+```bash
+ssh -t nixos@192.168.1.50
+```
+
+Enter the temporary password, then run these commands inside the SSH session:
+
+```bash
+sudo su
+bash <(curl -sL https://raw.githubusercontent.com/lehtlau/nixos/main/scripts/install.sh)
+```
+
+## Run the installation script
 ```bash
 bash <(curl -sL https://raw.githubusercontent.com/lehtlau/nixos/main/scripts/install.sh)
 ```
-or continue with the manual installation...
 
-## Create boot and root partitions
-Find your drives `lsblk -o name,uuid,size,fstype,mountpoint,model`
+Alternatively, continue with the manual installation below.
 
-Use `cfdisk` on your drive `cfdisk /dev/<YOUR_BLOCK_DEVICE>` and make a GPT table with the following layout:
-- partition 1: 2G, type `EFI System`
-- partition 2: rest of the disk, type `Linux filesystem`
+## Create boot and root partitions (Manual install guide)
+Find your drives with `lsblk -o name,uuid,size,fstype,mountpoint,model`.
+
+Run `cfdisk /dev/<YOUR_BLOCK_DEVICE>` on your drive and create a GPT partition table with the following layout:
+
+- Partition 1: 2G, type `EFI System`
+- Partition 2: rest of the disk, type `Linux filesystem`
 
 ```bash
 NAME               UUID                                     SIZE FSTYPE      MODEL
@@ -32,8 +60,8 @@ nvme1n1                                                   931,5G             Sam
 ├─nvme1n1p1        8A88-665B                                  2G vfat
 └─nvme1n1p2        582d6f53-d527-48a4-9d19-f6945b2b8584   929,5G crypto_LUKS
 ```
-## Setup luks full disk encryption
-Replace `nvme1n1p1` / `nvme1n1p2` with your own partitions.
+## Set up LUKS full disk encryption
+Replace `nvme1n1p1` and `nvme1n1p2` with your own partitions.
 ```bash
 # format the boot partition
 mkfs.fat -F 32 -n "NixOS-Boot" /dev/nvme1n1p1
@@ -50,7 +78,7 @@ pvcreate /dev/mapper/cryptroot
 # create a volume group inside
 vgcreate lvmroot /dev/mapper/cryptroot
 
-# Optional, create the swap volume
+# Optionally, create the swap volume
 lvcreate --size 8G lvmroot --name swap
 
 # create the root volume
@@ -72,7 +100,7 @@ mount -o umask=077 /dev/disk/by-label/NixOS-Boot /mnt/boot
 # turn on swap
 swapon /dev/disk/by-label/NixOS-Swap
 ```
-Your layout should look something like this
+Your layout should look something like this:
 ```
 nvme1n1                                                   931,5G             Samsung SSD 980 1TB
 ├─nvme1n1p1        8A88-665B                                  2G vfat
@@ -82,19 +110,19 @@ nvme1n1                                                   931,5G             Sam
     └─lvmroot-root b844ab70-8b62-4396-8873-ba81c3a80552   921,5G ext4
 ```
 
-## Generate your hardware config
+## Generate your hardware configuration
 ```bash
 nixos-generate-config --root /mnt
 ```
 This writes `/mnt/etc/nixos/hardware-configuration.nix`.
 
 ## Get the flake
-Pick **one** of the two options. Both end with the repo at `/mnt/home/<your_username>/nixos`.
+Pick **one** of the two options. Both place the repository at `/mnt/home/<your_username>/nixos`.
 
-The username comes from `my.user.name` in `modules/system/users/default.nix`. Change it there if you install for someone else.
+The username comes from `user.name` in `options.nix` at the repository root. Change it there if you are installing for someone else.
 
-### Option A: clone from github
-Needs internet. The minimal ISO doesn't ship git, so pull it into a temporary shell:
+### Option A: Clone from GitHub
+This requires an internet connection. The minimal ISO does not include Git, so load it in a temporary shell:
 ```bash
 nix-shell -p git
 
@@ -103,22 +131,22 @@ git clone https://github.com/lehtlau/nixos /mnt/home/<your_username>/nixos
 cd /mnt/home/<your_username>/nixos
 ```
 
-### Option B: copy from the ventoy usb thumbdrive
-Before booting, put the `nixos` repo folder (including its hidden `.git` folder) in the root of the ventoy data partition, next to the ISO files.
+### Option B: Copy from the Ventoy USB drive
+Before booting, put the `nixos` repository folder (including its hidden `.git` folder) in the root of the Ventoy data partition, next to the ISO files.
 
-lsblk -f Find the ventoy data partition, it's the big `exfat` partition labeled `Ventoy`:
+Find the Ventoy data partition: it is the large `exfat` partition labeled `Ventoy`:
 ```bash
 lsblk -o name,label,size,fstype,mountpoint
 ```
-Mount it somewhere other than `/mnt` (`/mnt` is the new system):
+Mount it somewhere other than `/mnt`, where the new system is mounted:
 ```bash
 mkdir -p /media/usb
 
-# while booted from ventoy the raw partition (e.g. /dev/sda1) is held by ventoy,
-# so it shows up as a device mapper node instead
+# While booted from Ventoy, the raw partition (e.g. /dev/sda1) is held by Ventoy,
+# so it appears as a device-mapper node instead.
 mount /dev/mapper/sda1 /media/usb
 ```
-Copy the repo to your new home directory and unmount the usb:
+Copy the repository to your new home directory and unmount the USB drive:
 ```bash
 mkdir -p /mnt/home/<your_username>
 cp -r /media/usb/nixos /mnt/home/<your_username>/nixos
@@ -126,50 +154,55 @@ umount /media/usb
 cd /mnt/home/<your_username>/nixos
 ```
 
-## Pick a host and copy in your hardware config
-Available hosts: `laptop`, `gmk`, `server`, `jupiter` (see `hosts/` and the host list in `flake.nix`).
+## Pick a host and copy your hardware configuration
+Available hosts: `laptop`, `gmk`, `server`, `jupiter`, `kde-desktop`, and
+`mini-ai-server` (see `hosts/` and the host list in `flake.nix`).
+`kde-desktop` and `mini-ai-server` have placeholder hardware configurations.
+The installer replaces these; for manual installation, copy the generated
+hardware configuration as described below.
 
-**Reinstalling an existing host**, overwrite its hardware config:
+**Reinstalling an existing host:** overwrite its hardware configuration:
 ```bash
 cp /mnt/etc/nixos/hardware-configuration.nix hosts/<host>/hardware-configuration.nix
 ```
 
-**Adding a new host**:
+**Adding a new host:**
 ```bash
 cp -r hosts/laptop hosts/<new_host>
 cp /mnt/etc/nixos/hardware-configuration.nix hosts/<new_host>/hardware-configuration.nix
 ```
-- set `networking.hostName = "<new_host>";` in `hosts/<new_host>/configuration.nix`
-- add `"<new_host>"` to the host list at the bottom of `flake.nix`
-- stage the new files, **flakes only see files tracked by git**:
+- Set `networking.hostName = "<new_host>";` in `hosts/<new_host>/configuration.nix`.
+- Add `"<new_host>"` to the host list at the bottom of `flake.nix`.
+- Stage the new files. **Flakes only see files tracked by Git:**
 ```bash
 git add hosts/<new_host>
 ```
 
-## Verify your hardware config has everything required to mount encrypted logical volumes
-initrd needs to know where to find the encrypted partition. Edit `hosts/<host>/hardware-configuration.nix` and make sure it has the following:
+## Verify that your hardware configuration can mount encrypted logical volumes
+The initrd needs to know where to find the encrypted partition. Edit `hosts/<host>/hardware-configuration.nix` and make sure it has the following:
 ```nix
 { # cut
-  # We need "cryptd" in the initrd kernel modules, or the system won't boot expecting an encrypted partition, which is where our root and swap logical volumes live.
-  boot.initrd.kernelModules = [ "dm-snapshot" "cryptd" ]; # <- Add "cryptd" in it
+  # Include "cryptd" in the initrd kernel modules so the system can boot
+  # with the root and swap logical volumes inside the encrypted partition.
+  boot.initrd.kernelModules = [ "dm-snapshot" "cryptd" ]; # <- Add "cryptd" here
 
-  # Modify this to the name of the encrypted partition (name you used in cryptsetup luksFormat)
+  # Modify this to the name of the encrypted partition (the label you used with cryptsetup luksFormat)
   boot.initrd.luks.devices."cryptroot".device = "/dev/disk/by-label/NixOS-Encrypted";
 
-  # Modify this to the name of the root logical volume (name you used in mkfs.ext4)
+  # Modify this to the name of the root logical volume (the label you used with mkfs.ext4)
   fileSystems."/" =
     { device = "/dev/disk/by-label/NixOS-Root"; # <- Change this
       fsType = "ext4";
     };
 
-  # Modify this to the name of the unencrypted boot partition (name you used in mkfs.fat)
+  # Modify this to the name of the unencrypted boot partition (the label you used with mkfs.fat)
   fileSystems."/boot" =
     { device = "/dev/disk/by-label/NixOS-Boot"; # <- Change this
       fsType = "vfat";
       options = [ "fmask=0077" "dmask=0077" ];
     };
 
-  # Modify this to the name of the swap logical volume (name you used in mkswap)
+  # Modify this to the name of the swap logical volume (the label you used with mkswap)
   swapDevices = [ { device = "/dev/disk/by-label/NixOS-Swap"; } ]; # <- Change this
 }
 ```
@@ -180,8 +213,7 @@ nixos-install --flake /mnt/home/<your_username>/nixos#<host> --no-root-password
 ```
 If you get `experimental feature 'flakes' is disabled`, add `--option experimental-features 'nix-command flakes'`.
 
-
-After the install, set a password for your user and give it ownership of the flake
+After installation, set a password for your user and give the user ownership of the flake repository:
 ```bash
 nixos-enter --root /mnt -c 'passwd <your_username>'
 nixos-enter --root /mnt -c 'chown -R <your_username>:users /home/<your_username>'
@@ -189,41 +221,71 @@ nixos-enter --root /mnt -c 'chown -R <your_username>:users /home/<your_username>
 
 `reboot`
 
-### done
+Installation is complete.
 
-# useful stuff
+# Useful commands
 
-### create and delete profiles
-```
-sudo nixos-rebuild switch --profile-name work
+### Create and delete named NixOS system profiles
 
-sudo nix-env -p /nix/var/nix/profiles/system-profiles/<name> --delete-generations old
+```bash
+# Create or update a named system profile and activate it
+sudo nixos-rebuild switch \
+  --flake /etc/nixos#<hostname> \
+  --profile-name <profile_name>
 
-sudo nixos-rebuild boot
+# List named system profiles
+sudo ls -lah /nix/var/nix/profiles/system-profiles/
+
+# List generations for a named profile
+sudo nix-env \
+  -p /nix/var/nix/profiles/system-profiles/<profile_name> \
+  --list-generations
+
+# Delete older generations of a named profile,
+# retaining its current generation and the profile itself
+sudo nix-env \
+  -p /nix/var/nix/profiles/system-profiles/<profile_name> \
+  --delete-generations old
+
+# Delete a named profile reference
+sudo rm /nix/var/nix/profiles/system-profiles/<profile_name>
+
+# List available system maintenance commands
+just
+
 ```
-### Test build without applying
+
+### Update flake inputs
 ```
-sudo nixos-rebuild dry-build --flake .
+nix flake update
+nix flake lock --update-input hypr-monitors
 ```
-### change host
+
+### Install a new system configuration for the next boot
+```
+sudo nixos-rebuild boot --flake
+
+# --profile-name <profile_name> 
+```
+
+### Change hosts
 ```
 sudo nixos-rebuild switch --flake .#<host>
 ```
-###  change ownership
+### Change ownership
 
 ```
-# change ownsersip of dir its files recursively
+# Recursively change ownership of a directory and its files
 sudo chown -R $(id -un):users <path>
 ```
-###  unlock with a keyfile
+### Unlock with a keyfile
 
 ```
   boot.initrd.availableKernelModules = ["mmc_block"];
   boot.initrd.luks.devices.cryptroot = {
-    keyFile = "/luks.key:UUID=70553896-3b13-4964-ba55-582b001fc7ab";
+    keyFile = "/luks.key:UUID=<sd-card-uuid>";
     crypttabExtraOpts = ["keyfile-timeout=5s"];
   };
-
 
 sudo dd if=/dev/urandom of=/media/user/sdcard/luks.key bs=512 count=8
 sudo chmod 400 /media/user/sdcard/luks.key

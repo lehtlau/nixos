@@ -1,7 +1,37 @@
-_: {
+{myOptions, ...}: {
   services.homepage-dashboard = {
     enable = true;
-    allowedHosts = "192.168.50.197:8082,10.88.0.1:8082";
+    allowedHosts = "home.${myOptions.server.domain},${myOptions.server.lanIp}:8082,10.88.0.1:8082";
+
+    # Keep DNS links by default; switch to LAN URLs when opened by LAN IP.
+    # Observe rendering updates because Homepage mounts service cards dynamically.
+    customJS = ''
+      (() => {
+        const lanIp = ${builtins.toJSON myOptions.server.lanIp};
+        const domain = ${builtins.toJSON myOptions.server.domain};
+        if (window.location.hostname !== lanIp) return;
+
+        const ports = { media: 8096, photos: 2283, git: 3000, vpn: 51821, minecraft: 8090 };
+        const links = new Map(Object.entries(ports).map(([name, port]) => [
+          'https://' + name + '.' + domain,
+          'http://' + lanIp + ':' + port
+        ]));
+
+        function updateLinks() {
+          document.querySelectorAll('a[href]').forEach((anchor) => {
+            const href = anchor.getAttribute('href');
+            const replacement = links.get(href) || links.get(href.replace(/\/$/, ""));
+            if (replacement) anchor.setAttribute('href', replacement);
+          });
+        }
+
+        const observer = new MutationObserver(updateLinks);
+        observer.observe(document.documentElement, {
+          childList: true, subtree: true, attributes: true, attributeFilter: ['href']
+        });
+        updateLinks();
+      })();
+    '';
 
     widgets = [
       {
@@ -34,8 +64,15 @@ _: {
           {
             "Jellyfin" = {
               icon = "jellyfin.png";
-              href = "http://192.168.50.197:8096";
+              href = "https://media.${myOptions.server.domain}";
               description = "Media server";
+            };
+          }
+          {
+            "Immich" = {
+              icon = "immich.png";
+              href = "https://photos.${myOptions.server.domain}";
+              description = "Photo and video backup";
             };
           }
         ];
@@ -45,15 +82,8 @@ _: {
           {
             "WG easy" = {
               icon = "wireguard.png";
-              href = "http://192.168.50.197:51821";
+              href = "https://vpn.${myOptions.server.domain}";
               description = "Wireguard VPN server";
-            };
-          }
-          {
-            "Nginx Proxy Manager" = {
-              icon = "nginx.png";
-              href = "http://192.168.50.197:81";
-              description = "Nginx Proxy Manager";
             };
           }
         ];
@@ -63,7 +93,7 @@ _: {
           {
             "Minecraft" = {
               icon = "minecraft.png";
-              href = "http://192.168.50.197:8090";
+              href = "https://minecraft.${myOptions.server.domain}";
               description = "Minecraft server (click to start/stop)";
               widget = {
                 type = "customapi";
@@ -92,7 +122,7 @@ _: {
           {
             "Forgejo" = {
               icon = "forgejo.png";
-              href = "http://192.168.50.197:3000";
+              href = "https://git.${myOptions.server.domain}";
               description = "Git server";
             };
           }

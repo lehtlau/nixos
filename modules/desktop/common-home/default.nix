@@ -1,18 +1,16 @@
 {...}: {
   imports = [
-    # Applications and tools
-    ./packages.nix # System / general packages
-    ./browsers.nix # Web browsers (Firefox & Brave)
-    ./vscode.nix # Code editor
-    ./mangohud.nix # Code editor
+    ./packages.nix
+    ./browsers.nix
+    ./vscode.nix
+    ./mangohud.nix
 
-    # Shell and development environment
-    ./direnv.nix # Development environment management
+    ./direnv.nix
     ./kitty.nix
+    ./nmtui.nix
     ./thunar.nix
 
-    # System integration
-    ./environment.nix # Environment variables and secrets
+    ./environment.nix
 
     ./non-desktop-home.nix
   ];

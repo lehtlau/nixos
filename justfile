@@ -8,7 +8,7 @@ check:
     ./scripts/check-fix.sh --check
 
 check-all:
-    ./scripts/check-fix.sh --all-hosts
+    ./scripts/check-fix.sh --check --all-hosts
 
 switch:
     sudo nixos-rebuild switch --flake .

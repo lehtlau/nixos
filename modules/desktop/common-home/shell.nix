@@ -1,10 +1,10 @@
-# home/shell.nix
-{pkgs, ...}: {
-  # Zsh Configuration
-  home.packages =
-    # Core System Utilities (Stable)
-    # CLI TUI Tools (Stable)
-    with pkgs; [
+{
+  pkgs,
+  pkgs-unstable,
+  ...
+}: {
+  home.packages = with pkgs;
+    [
       eza # Modern 'ls' replacement
       bat # Modern 'cat' with syntax highlighting
       fzf # Fuzzy finder
@@ -14,8 +14,11 @@
       btop # System monitor
       kitty.terminfo
       nerd-fonts.jetbrains-mono # Programming font with icons
+    ]
+    ++ (with pkgs-unstable; [
       claude-code # AI coding assistant
-    ];
+      codex
+    ]);
 
   programs.zsh = {
     enable = true;
@@ -23,21 +26,17 @@
     enableCompletion = true;
     syntaxHighlighting.enable = true;
 
-    # Completion settings
     completionInit = ''
       autoload -U compinit
       compinit
 
-      # Case insensitive completion
       zstyle ':completion:*' matcher-list 'm:{a-z}={A-Z}'
 
-      # Better completion behavior
       zstyle ':completion:*' menu select
       zstyle ':completion:*' use-cache on
       zstyle ':completion:*' cache-path ~/.zsh/cache
     '';
 
-    # Add your aliases here
     shellAliases = {
       ls = "eza --icons";
       l = "eza --icons";
@@ -47,7 +46,6 @@
       cat = "bat";
     };
 
-    # Oh My Zsh provides themes and plugins for zsh
     oh-my-zsh = {
       enable = true;
       plugins = [
@@ -56,24 +54,19 @@
       ]; # Plugin names from oh-my-zsh repository
     };
 
-    # initContent runs after zsh starts - for shell integrations and environment
     initContent = ''
-      # Source user environment variables if the file exists
       [ -f ~/.env ] && source ~/.env
 
       # Editor used by the fzf widgets below. Override at any time with
       # `ed=nano` (or in ~/.env); may contain arguments, e.g. "code -r".
       : "''${ed:=vi}"
 
-      # Initialize tools
       source <(fzf --zsh)
       eval "$(zoxide init zsh)"
 
-      # Autosuggestion settings for better visibility and behavior
       ZSH_AUTOSUGGEST_HIGHLIGHT_STYLE="fg=#666680,bold"
       ZSH_AUTOSUGGEST_STRATEGY=(history completion)
 
-      # Keybindings for autocompletion
       bindkey '^I' complete-word              # Tab for completion
       bindkey '^[[Z' reverse-menu-complete    # Shift+Tab for reverse completion
       bindkey '^ ' autosuggest-accept         # Ctrl+Space to accept suggestion
@@ -109,7 +102,6 @@
       zle -N fzf-edit-widget
       bindkey '^P' fzf-edit-widget
       bindkey '^[^F' fzf-edit-widget
-
 
       # Ctrl+Alt+P: fuzzy-find a directory under $PWD and open it in $ed.
       # Like Ctrl+P above, but for directories (the editor opens it as a tree/folder).
@@ -171,7 +163,6 @@
     enableBashIntegration = true;
   };
 
-  # Starship Prompt Configuration
   programs.starship = {
     enable = true;
     enableZshIntegration = true;

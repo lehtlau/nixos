@@ -1,11 +1,8 @@
-# home/services.nix
 {
   pkgs,
   theme,
   ...
 }: {
-  # -- User-level System Services --
-
   # MPRIS proxy forwards D-Bus media control signals to Waybar
   services.mpris-proxy.enable = true;
 
@@ -15,7 +12,6 @@
   # Mako is a Wayland notification daemon - replaces dunst on X11
   services.mako = {
     enable = true;
-    # Settings go in a nested attrset, not top-level
     settings = {
       "background-color" = "#${theme.primary_background}";
       "text-color" = "#${theme.primary_foreground}";
@@ -49,9 +45,7 @@
     ];
   };
 
-  # Systemd user services and timers
   systemd.user = {
-    # Random wallpaper rotation service
     services.wallpaper-rotate = {
       Unit = {
         Description = "Rotate wallpaper randomly";
@@ -62,7 +56,6 @@
       };
     };
 
-    # Timer for random wallpaper rotation
     timers.wallpaper-rotate = {
       Unit = {
         Description = "Run wallpaper rotation at random intervals";

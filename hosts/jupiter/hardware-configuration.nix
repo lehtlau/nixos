@@ -49,6 +49,13 @@
     crypttabExtraOpts = ["keyfile-timeout=5s"];
   };
 
+  swapDevices = [
+    {
+      device = "/var/lib/swapfile";
+      size = 32 * 1024; # MiB
+    }
+  ];
+
   fileSystems."/boot" = {
     device = "/dev/disk/by-uuid/9BF3-A979";
     fsType = "vfat";
@@ -57,8 +64,6 @@
       "dmask=0077"
     ];
   };
-
-  swapDevices = [];
 
   nixpkgs.hostPlatform = lib.mkDefault "x86_64-linux";
   hardware.cpu.amd.updateMicrocode = lib.mkDefault config.hardware.enableRedistributableFirmware;

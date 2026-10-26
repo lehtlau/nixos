@@ -4,11 +4,7 @@
   config,
   ...
 }: {
-  # Nix configuration
-  nix.settings.trusted-users = [
-    "root"
-    "${config.my.user.name}"
-  ]; # Users who can configure Nix
+  nix.settings.trusted-users = ["root"];
   nix.settings.experimental-features = [
     "nix-command"
     "flakes"

@@ -1,21 +1,37 @@
-# unfinessed
-{pkgs, ...}: {
+{
+  pkgs,
+  myOptions,
+  ...
+}: {
+  systemd.services.wg-easy = {
+    requires = ["podman-wg-network-create.service"];
+    after = ["podman-wg-network-create.service"];
+  };
+
   systemd.services.podman-wg-network-create = {
     description = "Create wg Podman network";
-    before = ["wg-easy.service"];
-    requires = ["podman.service"];
-    wantedBy = ["wg-easy.service"];
     serviceConfig = {
       Type = "oneshot";
       RemainAfterExit = true;
     };
     script = ''
-      ${pkgs.podman}/bin/podman network rm wg || true
+      # Preserve an existing network, including any attached containers.
+      # Exit 1 means absent; operational errors must fail this unit.
+      if ${pkgs.podman}/bin/podman network exists wg; then
+        exit 0
+      else
+        status=$?
+        if [ "$status" -ne 1 ]; then
+          exit "$status"
+        fi
+      fi
+
       ${pkgs.podman}/bin/podman network create \
         --driver bridge \
+        --ipv6 \
         --subnet 10.42.42.0/24 \
         --subnet fdcc:ad94:bacf:61a3::/64 \
-        wg || true
+        wg
     '';
   };
   virtualisation.oci-containers.containers.wg-easy = {
@@ -25,32 +41,37 @@
 
     volumes = [
       "etc-wireguard:/etc/wireguard"
-      "/run/current-system/kernel-modules/lib/modules:/lib/modules:ro"
     ];
 
     environment = {
-      # Allow logging into the web UI over plain http (no TLS reverse proxy)
+      # Allow HTTP administration on the LAN/VPN; access is restricted by the firewall.
       INSECURE = "true";
 
       # Unattended setup, only applied on first start (empty database).
       # INIT_USERNAME / INIT_PASSWORD come from the environment file below.
       INIT_ENABLED = "true";
-      INIT_HOST = "192.168.50.142";
+      # LAN-only bootstrap default, not an internet endpoint. For remote access,
+      # set the public hostname in the admin UI and update/reimport clients.
+      # INIT_* does not change an already initialized persistent database.
+      INIT_HOST = myOptions.server.lanIp;
       INIT_PORT = "51820";
-      INIT_DNS = "1.1.1.1,8.8.8.8";
+      # Existing clients need DNS updated in the UI and profiles reimported.
+      INIT_DNS = myOptions.server.lanIp;
       INIT_IPV4_CIDR = "10.8.0.0/24";
       INIT_IPV6_CIDR = "fdcc:ad94:bacf:61a4::/64";
     };
 
-    # Kept out of the nix store. Create it on the host, e.g.:
-    #   INIT_USERNAME=admin
-    #   INIT_PASSWORD=<at least 12 chars>
+    # Kept out of the nix store. Create it on the host:
+    #   install -d -m 700 /etc/wg-easy
+    #   install -m 600 /dev/null /etc/wg-easy/wg-easy.env
+    #   printf 'INIT_USERNAME=admin\nINIT_PASSWORD=<at least 12 chars>\n' > /etc/wg-easy/wg-easy.env
+    environmentFiles = ["/etc/wg-easy/wg-easy.env"];
 
     networks = ["wg"];
 
     ports = [
       "51820:51820/udp"
-      "51821:51821/tcp" # WEB UI
+      "51821:51821/tcp" # LAN/VPN administration; access restricted by the firewall.
     ];
 
     # The image switches iptables to the legacy backend, but the host runs nftables
@@ -59,6 +80,7 @@
     cmd = [
       "-c"
       ''
+        set -e
         update-alternatives --install /usr/sbin/iptables iptables /usr/sbin/iptables-nft 20 --slave /usr/sbin/iptables-restore iptables-restore /usr/sbin/iptables-nft-restore --slave /usr/sbin/iptables-save iptables-save /usr/sbin/iptables-nft-save
         update-alternatives --install /usr/sbin/ip6tables ip6tables /usr/sbin/ip6tables-nft 20 --slave /usr/sbin/ip6tables-restore ip6tables-restore /usr/sbin/ip6tables-nft-restore --slave /usr/sbin/ip6tables-save ip6tables-save /usr/sbin/ip6tables-nft-save
         exec /usr/local/bin/docker-entrypoint.sh /usr/bin/dumb-init node server/index.mjs
@@ -70,7 +92,6 @@
       "--ip6=fdcc:ad94:bacf:61a3::2a"
       "--cap-add=NET_ADMIN"
       "--cap-add=NET_RAW"
-      "--cap-add=SYS_MODULE" # <-- add this
 
       "--sysctl=net.ipv4.ip_forward=1"
       "--sysctl=net.ipv4.conf.all.src_valid_mark=1"

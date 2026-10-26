@@ -11,7 +11,8 @@
         "use sendfile" = "yes";
         "min protocol" = "smb2";
         # note: localhost is the ipv6 localhost ::1
-        "hosts allow" = "192.168.50.0/24 127.0.0.1 localhost";
+        # wg-easy masquerades home VPN clients behind its container address.
+        "hosts allow" = "192.168.50.0/24 10.42.42.42 127.0.0.1 localhost";
         "hosts deny" = "0.0.0.0/0";
         "guest account" = "nobody";
         "map to guest" = "bad user";

@@ -1,0 +1,10 @@
+title = "NixOS public mirror secret checks"
+
+[extend]
+useDefault = true
+
+[[rules]]
+id = "nix-runner-registration-token"
+description = "Literal runner registration token; use a runtime tokenFile instead"
+regex = '''(?m)^\s*token\s*=\s*"([^"\r\n]{16,})"\s*;'''
+secretGroup = 1

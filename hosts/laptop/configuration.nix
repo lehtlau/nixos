@@ -1,30 +1,39 @@
 # configuration.nix
-{pkgs, ...}: {
-  # hostname, used in config generaiton
+{
+  pkgs,
+  root,
+  ...
+}: {
   networking.hostName = "laptop";
 
   imports = [
     # hardware config
     ./hardware-configuration.nix
-    # desktop modules
-    ../../modules/desktop/common-desktop/common-desktop-packages.nix
-    ../../modules/desktop/common-desktop/sddm.nix
-    ../../modules/desktop/hyprland
-    ../../modules/desktop/common-desktop/gaming.nix
+    # desktop modules -- hyprland
+    "${root}/modules/desktop/common-desktop/common-desktop-packages.nix"
+    "${root}/modules/desktop/common-desktop/sddm.nix"
+    "${root}/modules/desktop/hyprland"
+    "${root}/modules/desktop/common-desktop/gaming.nix"
+    "${root}/modules/desktop/common-desktop/orca.nix"
+    "${root}/modules/desktop/common-desktop/torrenting.nix"
 
     #system config
-    ../../modules/system/kernel/latest.nix
-    ../../modules/system/boot/grub.nix
-    ../../modules/system/input
-    ../../modules/system/audio
-    ../../modules/system/users
-    ../../modules/system/networking
-    ../../modules/system/locale
-    ../../modules/system/fonts/lcd.nix
-    ../../modules/system/bluetooth
+    "${root}/modules/system/kernel/lts.nix"
+    "${root}/modules/system/boot/grub.nix"
+    "${root}/modules/system/input"
+    "${root}/modules/system/audio"
+    "${root}/modules/system/users"
+    "${root}/modules/system/networking"
+    "${root}/modules/desktop/common-desktop/home-vpn"
+    "${root}/modules/system/locale"
+    "${root}/modules/system/fonts/lcd.nix"
+    "${root}/modules/system/bluetooth"
 
     #nix settings
-    ../../modules/nix
+    "${root}/modules/nix"
+
+    #services
+    "${root}/modules/services/ssh.nix"
   ];
 
   my.sddm = {

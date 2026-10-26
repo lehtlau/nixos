@@ -1,6 +1,6 @@
 # configuration.nix
-{...}: {
-  # hostname, used in config generaiton
+{root, ...}: {
+  # hostname, used in config generation
   networking.hostName = "gmk";
 
   imports = [
@@ -8,28 +8,24 @@
     ./hardware-configuration.nix
     # De module, imports both desktop envinment and packages
     #system config
-    ../../modules/system/kernel/latest.nix
-    ../../modules/system/boot/grub.nix
-    ../../modules/system/input
-    ../../modules/system/audio
-    ../../modules/system/users
-    ../../modules/system/networking
-    ../../modules/system/locale
-    ../../modules/system/fonts/oled.nix
-    ../../modules/system/bluetooth/default.nix
+    "${root}/modules/system/kernel/latest.nix"
+    "${root}/modules/system/boot/grub.nix"
+    "${root}/modules/system/input"
+    "${root}/modules/system/audio"
+    "${root}/modules/system/users"
+    "${root}/modules/system/networking"
+    "${root}/modules/system/locale"
+    "${root}/modules/system/fonts/lcd.nix"
+    "${root}/modules/system/bluetooth/default.nix"
     #nix settings
-    ../../modules/nix
+    "${root}/modules/nix"
     # desktop modules
-    ../../modules/desktop/common-desktop/common-desktop-packages.nix
-    ../../modules/desktop/common-desktop/sddm.nix
-    ../../modules/desktop/common-desktop/gaming.nix
-    ../../modules/desktop/common-desktop/torrenting.nix
-    ../../modules/desktop/common-desktop/game-dev.nix
-    ../../modules/desktop/common-desktop/emulators.nix
-    ../../modules/desktop/common-desktop/gaming.nix
-    ../../modules/desktop/kde
+    "${root}/modules/desktop/common-desktop/common-desktop-packages.nix"
+    "${root}/modules/desktop/common-desktop/sddm.nix"
+    "${root}/modules/desktop/common-desktop/torrenting.nix"
+    "${root}/modules/desktop/kde"
     #services
-    ../../modules/services/llm/ollama.nix
+    "${root}/modules/services/ssh.nix"
   ];
 
   my.sddm = {

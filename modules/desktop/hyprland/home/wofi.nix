@@ -41,20 +41,35 @@ _: {
       #entry {
         color: #cdd6f4; /* Catppuccin Mocha text */
         background-color: #313244; /* Catppuccin Mocha surface0 */
-        padding: 10px;
+        padding: 6px 10px;
       }
 
       #entry:selected {
         background-color: #cba6f7; /* Catppuccin Mocha mauve */
         color: #1e1e2e; /* Catppuccin Mocha base */
       }
+
+      /* App icon shown in drun mode (allow_images below) */
+      #img {
+        margin-right: 10px;
+      }
+
+      /* Second label of a drun entry, only drawn when display_generic is on */
+      #text.drun-generic-name {
+        color: #a6adc8; /* Catppuccin Mocha subtext0 */
+      }
     '';
     settings = {
+      insensitive = true;
       show = "drun"; # Application launcher mode
-      width = "40%";
-      lines = 5;
+      width = "60%";
+      height = "60%"; # only honoured while `lines` is unset/0
       prompt = "Launch:";
       layer = "overlay"; # Appears above other windows
+      # Show each app's icon from the GTK icon theme (Papirus-Dark, see gtk.nix).
+      # Also enables wofi's img:/text: escapes in dmenu mode.
+      allow_images = true;
+      image_size = 24;
     };
   };
 }

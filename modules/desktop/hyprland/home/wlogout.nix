@@ -1,4 +1,3 @@
-# home/wlogout.nix
 {
   config,
   lib,
@@ -26,7 +25,10 @@ in {
       }
       {
         "label" = "logout";
-        "action" = "hyprctl dispatch exit";
+        # configType is "lua", so hyprctl parses the dispatch argument as a lua
+        # expression: the legacy `dispatch exit` reads as the undefined global
+        # `exit` and errors out instead of ending the session.
+        "action" = "hyprctl dispatch 'hl.dsp.exit()'";
         "text" = "Logout";
         "keybind" = "e";
       }
@@ -50,7 +52,6 @@ in {
       }
     ];
 
-    # Custom styling with Catppuccin colors, icons and rounded corners
     style = lib.mkForce ''
       * {
         font-family: "JetBrainsMono Nerd Font", monospace;

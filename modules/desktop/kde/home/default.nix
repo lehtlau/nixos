@@ -1,13 +1,15 @@
-# home.nix
-{config, ...}: let
+{
+  config,
+  root,
+  ...
+}: let
   myUser = config.my.user;
-  # requires catppuccin
 in {
-  # Home Manager configuration for user environment
   home-manager.users.${myUser.name} = {
     imports = [
-      ../../common-home/default.nix
+      "${root}/modules/desktop/common-home/default.nix"
       ./default-apps.nix # Default applications
+      ../../common-home/kwallet
     ];
 
     home.stateVersion = "25.05";

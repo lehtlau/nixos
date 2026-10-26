@@ -1,4 +1,4 @@
-_: {
+{myOptions, ...}: {
   services.forgejo = {
     enable = true;
     database.type = "sqlite3";
@@ -6,8 +6,12 @@ _: {
     lfs.enable = true;
     settings = {
       server = {
-        DOMAIN = "192.168.50.197";
-        ROOT_URL = "http://192.168.50.197:3000/";
+        DOMAIN = "git.${myOptions.server.domain}";
+        # The firewall permits web access from the home LAN. Keep loopback
+        # reachable too, for the local Actions runner's existing registration.
+        HTTP_ADDR = "0.0.0.0";
+        ROOT_URL = "https://git.${myOptions.server.domain}/";
+        SSH_DOMAIN = myOptions.server.lanIp;
         START_SSH_SERVER = true;
         SSH_LISTEN_HOST = "0.0.0.0";
 

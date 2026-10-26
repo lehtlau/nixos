@@ -2,10 +2,24 @@
   config,
   lib,
   pkgs,
+  root,
   ...
 }: let
   mySddm = config.my.sddm;
   myUser = config.my.user;
+
+  # `or false` rather than a plain read: catppuccin.nixosModules.catppuccin is
+  # only imported by modules/desktop/hyprland/default.nix, so on a KDE host the
+  # option does not read false -- it does not exist at all.
+  catppuccinEnabled = config.catppuccin.enable or false;
+
+  catppuccin-sddm-theme = pkgs.catppuccin-sddm.override {
+    flavor = "mocha";
+    accent = "mauve";
+    fontSize = "9";
+    background = "${pkgs.copyPathToStore (root + "/wallpapers/w1.jpg")}";
+    loginBackground = true;
+  };
 in {
   config = {
     services.displayManager.sddm = {
@@ -26,15 +40,19 @@ in {
             InputMethod = ""; # Can be set to "qtvirtualkeyboard" if needed
           };
 
-          Theme = {
-            Current = "catppuccin-mocha-mauve";
-            Background = "${pkgs.copyPathToStore ../../../wallpapers/w1.jpg}";
-            CursorTheme = "catppuccin-mocha-dark-cursors";
-            CursorSize = 24;
-            Font = "JetBrainsMono Nerd Font";
-            EnableAvatars = false;
-            DisableAvatarsThreshold = 7;
-          };
+          Theme =
+            {
+              Background = "${pkgs.copyPathToStore (root + "/wallpapers/w1.jpg")}";
+              CursorSize = 24;
+              Font = "JetBrainsMono Nerd Font";
+              EnableAvatars = false;
+              DisableAvatarsThreshold = 7;
+            }
+            # Without these SDDM falls back to its built-in theme and cursor.
+            // lib.optionalAttrs catppuccinEnabled {
+              Current = "catppuccin-mocha-mauve";
+              CursorTheme = "catppuccin-mocha-dark-cursors";
+            };
 
           Wayland = {
             CompositorCommand = "${pkgs.kdePackages.kwin}/bin/kwin_wayland --no-lockscreen --inputmethod maliit-keyboard";
@@ -64,25 +82,24 @@ in {
         };
     };
 
-    environment.systemPackages = with pkgs; [
-      (catppuccin-sddm.override {
-        flavor = "mocha";
-        accent = "mauve";
-        fontSize = "9";
-        background = "${pkgs.copyPathToStore ../../../wallpapers/w1.jpg}";
-        loginBackground = true;
-      })
+    environment.systemPackages =
+      [
+        pkgs.libsForQt5.qt5.qtquickcontrols2
+        pkgs.libsForQt5.qt5.qtgraphicaleffects
+        pkgs.kdePackages.qtquick3d
+        pkgs.kdePackages.qtvirtualkeyboard
+      ]
+      ++ lib.optionals catppuccinEnabled [
+        catppuccin-sddm-theme
+        pkgs.catppuccin-cursors.mochaDark
+      ];
 
-      catppuccin-cursors.mochaDark
-      libsForQt5.qt5.qtquickcontrols2
-      libsForQt5.qt5.qtgraphicaleffects
-      kdePackages.qtquick3d
-      kdePackages.qtvirtualkeyboard
-    ];
-
-    environment.variables = {
-      XCURSOR_THEME = "catppuccin-mocha-dark-cursors";
-      XCURSOR_SIZE = "20";
-    };
+    environment.variables =
+      {
+        XCURSOR_SIZE = "20";
+      }
+      // lib.optionalAttrs catppuccinEnabled {
+        XCURSOR_THEME = "catppuccin-mocha-dark-cursors";
+      };
   };
 }

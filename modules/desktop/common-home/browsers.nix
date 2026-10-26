@@ -1,5 +1,8 @@
-{pkgs-unstable, ...}: {
-  # Firefox Configuration
+{
+  pkgs-unstable,
+  myOptions,
+  ...
+}: {
   programs.firefox = {
     enable = true;
     package = pkgs-unstable.firefox;
@@ -17,13 +20,11 @@
         "privacy.trackingprotection.cryptomining.enabled" = true;
         "privacy.trackingprotection.fingerprinting.enabled" = true;
 
-        # Disable telemetry to match Brave's privacy focus
         "datareporting.healthreport.uploadEnabled" = false;
         "toolkit.telemetry.enabled" = false;
         "toolkit.telemetry.unified" = false;
         "toolkit.telemetry.archive.enabled" = false;
 
-        # Set DuckDuckGo as default search engine
         "browser.search.defaultenginename" = "google";
         "browser.urlbar.placeholderName" = "google";
 
@@ -76,7 +77,7 @@
               }
               {
                 name = "";
-                url = "http://192.168.50.197:8082/#/";
+                url = "http://${myOptions.server.lanIp}:8082/#/";
               }
             ];
           }
@@ -175,7 +176,6 @@
       "DisablePasswordReveal" = true;
       "PasswordManagerEnabled" = false;
 
-      # Extension management
       "ExtensionSettings" = {
         "uBlock0@raymondhill.net" = {
           "install_url" = "https://addons.mozilla.org/firefox/downloads/latest/ublock-origin/latest.xpi";
@@ -193,8 +193,6 @@
     };
   };
 
-  # Brave Browser Configuration
-  # Create a wrapper script that launches Brave with dark mode flags
   home.packages = [
     pkgs-unstable.brave-origin
     pkgs-unstable.brave

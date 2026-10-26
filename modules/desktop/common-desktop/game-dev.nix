@@ -1,7 +1,12 @@
-{pkgs, ...}: {
+{
+  pkgs,
+  unityhub-patched,
+  ...
+}: {
   environment.systemPackages = with pkgs; [
-    unityhub
+    unityhub-patched
     blender
+    uv # runs blender-mcp (uvx blender-mcp)
     pixelorama
     krita
     dotnetCorePackages.sdk_10_0 #required by c# vscode extension
